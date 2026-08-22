@@ -26,10 +26,7 @@ impl ApplicationHandler<State> for App {
 
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.state = Some(pollster::block_on(State::new(window)).unwrap());
-        }
+        self.state = Some(pollster::block_on(State::new(window)).unwrap());
     }
 
     #[allow(unused_mut)]
