@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use wgpu::{Surface, wgt::instance};
-use winit::{event_loop::ActiveEventLoop, keyboard::KeyCode, window::Window};
+use winit::{
+    dpi::PhysicalPosition, event_loop::ActiveEventLoop, keyboard::KeyCode, window::Window,
+};
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -10,6 +12,7 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     window: Arc<Window>,
+    color: wgpu::Color,
 }
 
 impl State {
@@ -64,6 +67,12 @@ impl State {
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
 
+        let color = wgpu::Color {
+            r: 0.05,
+            g: 0.1,
+            b: 0.15,
+            a: 1.0,
+        };
         Ok(Self {
             surface,
             device,
@@ -71,6 +80,7 @@ impl State {
             config,
             is_surface_configured: false,
             window,
+            color,
         })
     }
 
@@ -88,6 +98,10 @@ impl State {
             (KeyCode::Escape, true) => event_loop.exit(),
             _ => {}
         }
+    }
+
+    pub fn mouse_moved(&mut self, position: PhysicalPosition<f64>) {
+        self.color.g = position.x / (self.window.inner_size().width as f64);
     }
 
     pub fn update(&mut self) {
@@ -135,12 +149,7 @@ impl State {
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.05,
-                            g: 0.1,
-                            b: 0.15,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(self.color),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
