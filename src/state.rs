@@ -1,8 +1,10 @@
 use std::sync::Arc;
-
+use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalPosition, event_loop::ActiveEventLoop, keyboard::KeyCode, window::Window,
 };
+
+use crate::vertex::{VERTICES, Vertex};
 
 pub struct State {
     surface: wgpu::Surface<'static>,
@@ -15,6 +17,8 @@ pub struct State {
     render_pipeline_colored: wgpu::RenderPipeline,
     use_colored_pipeline: bool,
     color: wgpu::Color,
+    vertex_buffer: wgpu::Buffer,
+    num_vertices: u32,
 }
 
 impl State {
@@ -85,7 +89,7 @@ impl State {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"),
-                buffers: &[],
+                buffers: &[Some(Vertex::desc())],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -124,7 +128,7 @@ impl State {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[],
+                    buffers: &[Some(Vertex::desc())],
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
@@ -156,12 +160,20 @@ impl State {
                 cache: None,
             });
 
-        let color = wgpu::Color {
+        let background_color = wgpu::Color {
             r: 0.05,
             g: 0.1,
             b: 0.15,
             a: 1.0,
         };
+
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let num_vertices = VERTICES.len() as u32;
+
         Ok(Self {
             surface,
             device,
@@ -169,10 +181,12 @@ impl State {
             config,
             is_surface_configured: false,
             window,
-            color,
+            color: background_color,
             render_pipeline,
             render_pipeline_colored,
             use_colored_pipeline: false,
+            vertex_buffer,
+            num_vertices,
         })
     }
 
@@ -261,7 +275,8 @@ impl State {
             };
 
             render_pass.set_pipeline(pipeline_to_use);
-            render_pass.draw(0..3, 0..1);
+            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            render_pass.draw(0..self.num_vertices, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

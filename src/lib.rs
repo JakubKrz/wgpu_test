@@ -2,6 +2,8 @@ use winit::event_loop::EventLoop;
 
 pub mod app;
 pub mod state;
+mod vertex;
+
 use crate::app::App;
 
 pub fn run() -> anyhow::Result<()> {
