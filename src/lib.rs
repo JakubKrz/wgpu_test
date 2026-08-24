@@ -2,10 +2,10 @@ use winit::event_loop::EventLoop;
 
 pub mod app;
 mod camera;
+mod instance;
 pub mod state;
 mod texture;
 mod vertex;
-
 use crate::app::App;
 
 pub fn run() -> anyhow::Result<()> {
