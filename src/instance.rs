@@ -2,12 +2,6 @@ pub struct Instance {
     position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
 }
-#[repr(C)]
-#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct InstanceRaw {
-    model: [[f32; 4]; 4],
-}
-
 impl Instance {
     pub fn new(position: cgmath::Vector3<f32>, rotation: cgmath::Quaternion<f32>) -> Self {
         Self { position, rotation }
@@ -21,6 +15,13 @@ impl Instance {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct InstanceRaw {
+    model: [[f32; 4]; 4],
+}
+
 impl InstanceRaw {
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
         use std::mem;
