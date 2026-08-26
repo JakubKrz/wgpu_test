@@ -3,6 +3,7 @@ use winit::event_loop::EventLoop;
 pub mod app;
 mod camera;
 mod instance;
+mod light;
 mod model;
 mod resources;
 pub mod state;
