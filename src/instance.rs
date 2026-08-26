@@ -1,18 +1,41 @@
 pub struct Instance {
     position: cgmath::Vector3<f32>,
     rotation: cgmath::Quaternion<f32>,
+    scale: cgmath::Vector3<f32>,
 }
 impl Instance {
     pub fn new(position: cgmath::Vector3<f32>, rotation: cgmath::Quaternion<f32>) -> Self {
-        Self { position, rotation }
+        Self {
+            position,
+            rotation,
+            scale: cgmath::vec3(1.0, 1.0, 1.0),
+        }
+    }
+
+    pub fn with_scale(mut self, scale: cgmath::Vector3<f32>) -> Self {
+        self.scale = scale;
+        self
     }
 
     pub fn to_raw(&self) -> InstanceRaw {
+        let scale_inv = cgmath::Matrix3::new(
+            1.0 / self.scale.x,
+            0.0,
+            0.0,
+            0.0,
+            1.0 / self.scale.y,
+            0.0,
+            0.0,
+            0.0,
+            1.0 / self.scale.z,
+        );
         InstanceRaw {
-            model: (cgmath::Matrix4::from_translation(self.position)
+            model: ((cgmath::Matrix4::from_translation(self.position)
                 * cgmath::Matrix4::from(self.rotation))
+                * cgmath::Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z))
             .into(),
-            normal: cgmath::Matrix3::from(self.rotation).into(),
+
+            normal: (cgmath::Matrix3::from(self.rotation) * scale_inv).into(),
         }
     }
 }

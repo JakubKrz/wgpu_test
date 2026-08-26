@@ -1,4 +1,3 @@
-use bytemuck::bytes_of;
 use cgmath::{InnerSpace, Rotation3, Zero};
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
@@ -279,7 +278,7 @@ impl State {
                         cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
                     };
 
-                    Instance::new(position, rotation)
+                    Instance::new(position, rotation).with_scale(cgmath::vec3(1.0, 1.5, 1.0))
                 })
             })
             .collect::<Vec<_>>();
