@@ -150,7 +150,7 @@ impl State {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -413,7 +413,7 @@ impl State {
                 &self.obj_model,
                 &self.camera_bind_group,
                 &self.light_bind_group,
-            ); 
+            );
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.draw_model_instanced(

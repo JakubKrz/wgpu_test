@@ -52,6 +52,7 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::from_co
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
     view_proj: [[f32; 4]; 4],
+    view_pos: [f32; 4],
 }
 
 impl CameraUniform {
@@ -59,10 +60,12 @@ impl CameraUniform {
         use cgmath::SquareMatrix;
         Self {
             view_proj: cgmath::Matrix4::identity().into(),
+            view_pos: [0.0; 4],
         }
     }
 
     pub fn update_view_proj(&mut self, camera: &Camera) {
+        self.view_pos = camera.eye.to_homogeneous().into();
         self.view_proj = camera.build_view_projection_matrix().into();
     }
 }
