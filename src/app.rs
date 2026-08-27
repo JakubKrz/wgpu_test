@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use winit::{
     application::ApplicationHandler,
-    event::{KeyEvent, WindowEvent},
+    event::{DeviceEvent, KeyEvent, MouseButton, WindowEvent},
     event_loop::ActiveEventLoop,
     keyboard::PhysicalKey,
     window::Window,
@@ -12,11 +12,17 @@ use crate::state::State;
 
 pub struct App {
     state: Option<State>,
+    last_render_time: Instant,
+    last_mouse_pos: Option<(f64, f64)>,
 }
 
 impl App {
     pub fn new() -> Self {
-        Self { state: None }
+        Self {
+            state: None,
+            last_render_time: Instant::now(),
+            last_mouse_pos: None,
+        }
     }
 }
 
@@ -56,7 +62,10 @@ impl ApplicationHandler<State> for App {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
-                state.update();
+                let now = Instant::now();
+                let dt = now - self.last_render_time;
+                self.last_render_time = now;
+                state.update(dt);
                 match state.render() {
                     Ok(_) => {}
                     Err(e) => {
@@ -64,6 +73,16 @@ impl ApplicationHandler<State> for App {
                         event_loop.exit();
                     }
                 }
+            }
+            WindowEvent::MouseInput {
+                state: btn_state,
+                button,
+                ..
+            } => {
+                state.handle_mouse_button(button, btn_state.is_pressed());
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                state.handle_mouse_scroll(&delta);
             }
             WindowEvent::KeyboardInput {
                 event:
@@ -74,10 +93,33 @@ impl ApplicationHandler<State> for App {
                     },
                 ..
             } => state.handle_key(event_loop, code, key_state.is_pressed()),
-            WindowEvent::CursorMoved {
-                device_id: _device_id,
-                position,
-            } => state.mouse_moved(position),
+            _ => {}
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        let state = if let Some(state) = &mut self.state {
+            state
+        } else {
+            return;
+        };
+        match event {
+            //Returns coordinates and not dx,dy on wsl
+            DeviceEvent::MouseMotion { delta: (x, y) } => {
+                if let Some((last_x, last_y)) = self.last_mouse_pos {
+                    let dx = x - last_x;
+                    let dy = y - last_y;
+                    if state.mouse_pressed {
+                        state.camera_controller.handle_mouse(dx, dy);
+                    }
+                }
+                self.last_mouse_pos = Some((x, y));
+            }
             _ => {}
         }
     }

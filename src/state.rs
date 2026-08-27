@@ -1,14 +1,18 @@
 use cgmath::{InnerSpace, Rotation3, Zero};
 use std::sync::Arc;
+use std::time::Duration;
 use wgpu::util::DeviceExt;
 use winit::{
-    dpi::PhysicalPosition, event_loop::ActiveEventLoop, keyboard::KeyCode, window::Window,
+    event::{MouseButton, MouseScrollDelta},
+    event_loop::ActiveEventLoop,
+    keyboard::KeyCode,
+    window::Window,
 };
 
 use crate::{
-    camera::{self, Camera, CameraController, CameraUniform},
+    camera::{self, CameraUniform},
     instance::{Instance, InstanceRaw},
-    light::LightUniform,
+    light,
     model::{self, DrawModel, Vertex},
     resources, texture,
 };
@@ -29,12 +33,13 @@ pub struct State {
     depth_texture: texture::Texture,
 
     camera: camera::Camera,
-    camera_uniform: CameraUniform,
+    projection: camera::Projection,
+    camera_uniform: camera::CameraUniform,
+    pub camera_controller: camera::CameraController,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
-    camera_controller: CameraController,
 
-    light_uniform: LightUniform,
+    light_uniform: light::LightUniform,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_render_pipeline: wgpu::RenderPipeline,
@@ -42,6 +47,8 @@ pub struct State {
     instances: Vec<Instance>,
     instance_buffer: wgpu::Buffer,
     obj_model: model::Model,
+
+    pub mouse_pressed: bool,
 }
 
 impl State {
@@ -141,17 +148,12 @@ impl State {
         let obj_model =
             resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout).await?;
 
-        let camera = Camera::new(
-            (0.0, 1.0, 2.0).into(),
-            (0.0, 0.0, 0.0).into(),
-            cgmath::Vector3::unit_y(),
-            config.width as f32 / config.height as f32,
-            45.0,
-            0.1,
-            100.0,
-        );
+        let camera = camera::Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
+        let projection =
+            camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
+        let camera_controller = camera::CameraController::new(4.0, 1.5);
         let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
+        camera_uniform.update_view_proj(&camera, &projection);
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Camera Buffer"),
             contents: bytemuck::cast_slice(&[camera_uniform]),
@@ -179,12 +181,11 @@ impl State {
             }],
             label: Some("camera_bind_group"),
         });
-        let camera_controller = CameraController::new(0.1);
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        let light_uniform = LightUniform::new([5.0, 2.0, 2.0], [1.0, 1.0, 1.0]);
+        let light_uniform = light::LightUniform::new([5.0, 2.0, 2.0], [1.0, 1.0, 1.0]);
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Light VB"),
             contents: bytemuck::cast_slice(&[light_uniform]),
@@ -299,10 +300,11 @@ impl State {
             clear_color,
             render_pipeline,
             camera,
+            projection,
+            camera_controller,
             camera_uniform,
             camera_buffer,
             camera_bind_group,
-            camera_controller,
             instances,
             instance_buffer,
             depth_texture,
@@ -311,6 +313,7 @@ impl State {
             light_buffer,
             light_bind_group,
             light_render_pipeline,
+            mouse_pressed: false,
         })
     }
 
@@ -318,6 +321,7 @@ impl State {
         if width > 0 && height > 0 {
             self.config.width = width;
             self.config.height = height;
+            self.projection.resize(width, height);
             self.surface.configure(&self.device, &self.config);
             self.is_surface_configured = true;
             self.depth_texture =
@@ -325,21 +329,29 @@ impl State {
         }
     }
 
-    pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        match (code, is_pressed) {
-            (KeyCode::Escape, true) => event_loop.exit(),
-            (KeyCode::Space, true) => {}
-            _ => {
-                self.camera_controller.handle_key(code, is_pressed);
+    pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: KeyCode, pressed: bool) {
+        if !self.camera_controller.handle_key(key, pressed) {
+            match (key, pressed) {
+                (KeyCode::Escape, true) => event_loop.exit(),
+                _ => {}
             }
         }
     }
+    pub fn handle_mouse_button(&mut self, button: MouseButton, pressed: bool) {
+        match button {
+            MouseButton::Left => self.mouse_pressed = pressed,
+            _ => {}
+        }
+    }
 
-    pub fn mouse_moved(&mut self, _position: PhysicalPosition<f64>) {}
+    pub fn handle_mouse_scroll(&mut self, delta: &MouseScrollDelta) {
+        self.camera_controller.handle_scroll(delta);
+    }
 
-    pub fn update(&mut self) {
-        self.camera_controller.update_camera(&mut self.camera);
-        self.camera_uniform.update_view_proj(&self.camera);
+    pub fn update(&mut self, dt: Duration) {
+        self.camera_controller.update_camera(&mut self.camera, dt);
+        self.camera_uniform
+            .update_view_proj(&self.camera, &self.projection);
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
@@ -347,10 +359,11 @@ impl State {
         );
 
         let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
-        self.light_uniform.position =
-            (cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
-                * old_position)
-                .into();
+        self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
+            (0.0, 1.0, 0.0).into(),
+            cgmath::Deg(60.0 * dt.as_secs_f32()),
+        ) * old_position)
+            .into();
         self.queue.write_buffer(
             &self.light_buffer,
             0,
