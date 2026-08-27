@@ -13,33 +13,13 @@ fn assets_dir() -> std::path::PathBuf {
 }
 
 pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
-    let txt = {
-        let path = std::path::Path::new(env!("OUT_DIR"))
-            .join("assets")
-            .join(file_name);
-        std::fs::read_to_string(path)?
-    };
-
-    Ok(txt)
-}
-pub async fn load_string_current_exe(file_name: &str) -> anyhow::Result<String> {
     let path = assets_dir().join(file_name);
     let txt = std::fs::read_to_string(path)?;
     Ok(txt)
 }
-pub async fn load_binary_current_exe(file_name: &str) -> anyhow::Result<Vec<u8>> {
+pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
     let path = assets_dir().join(file_name);
     let data = std::fs::read(path)?;
-    Ok(data)
-}
-pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
-    let data = {
-        let path = std::path::Path::new(env!("OUT_DIR"))
-            .join("assets")
-            .join(file_name);
-        std::fs::read(path)?
-    };
-
     Ok(data)
 }
 
@@ -49,7 +29,7 @@ pub async fn load_texture(
     queue: &wgpu::Queue,
     is_normal_map: bool,
 ) -> anyhow::Result<texture::Texture> {
-    let data = load_binary_current_exe(file_name).await?;
+    let data = load_binary(file_name).await?;
     texture::Texture::from_bytes(device, queue, &data, file_name, is_normal_map)
 }
 
@@ -59,7 +39,7 @@ pub async fn load_model(
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
 ) -> anyhow::Result<model::Model> {
-    let obj_text = load_string_current_exe(file_name).await?;
+    let obj_text = load_string(file_name).await?;
     let obj_cursor = Cursor::new(obj_text);
     let mut obj_reader = BufReader::new(obj_cursor);
 
@@ -71,7 +51,7 @@ pub async fn load_model(
             ..Default::default()
         },
         |p| async move {
-            let mat_text = load_string_current_exe(&p).await.unwrap();
+            let mat_text = load_string(&p).await.unwrap();
             tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
         },
     )

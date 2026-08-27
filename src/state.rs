@@ -11,6 +11,7 @@ use winit::{
 
 use crate::{
     camera::{self, CameraUniform},
+    hdr,
     instance::{Instance, InstanceRaw},
     light,
     model::{self, DrawModel, Vertex},
@@ -49,6 +50,8 @@ pub struct State {
     obj_model: model::Model,
 
     pub mouse_pressed: bool,
+
+    hdr: hdr::HdrPipeline,
 }
 
 impl State {
@@ -232,9 +235,10 @@ impl State {
             create_render_pipeline(
                 &device,
                 &render_pipeline_layout,
-                config.format,
+                wgpu::TextureFormat::Rgba16Float,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[Some(model::ModelVertex::desc()), Some(InstanceRaw::desc())],
+                wgpu::PrimitiveTopology::TriangleList,
                 shader,
             )
         };
@@ -254,9 +258,10 @@ impl State {
             create_render_pipeline(
                 &device,
                 &layout,
-                config.format,
+                wgpu::TextureFormat::Rgba16Float,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[Some(model::ModelVertex::desc())],
+                wgpu::PrimitiveTopology::TriangleList,
                 shader,
             )
         };
@@ -279,7 +284,7 @@ impl State {
                         cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
                     };
 
-                    Instance::new(position, rotation).with_scale(cgmath::vec3(1.0, 1.5, 1.0))
+                    Instance::new(position, rotation)
                 })
             })
             .collect::<Vec<_>>();
@@ -289,6 +294,8 @@ impl State {
             contents: bytemuck::cast_slice(&instance_data),
             usage: wgpu::BufferUsages::VERTEX,
         });
+
+        let hdr = hdr::HdrPipeline::new(&device, &config);
 
         Ok(Self {
             surface,
@@ -314,6 +321,7 @@ impl State {
             light_bind_group,
             light_render_pipeline,
             mouse_pressed: false,
+            hdr,
         })
     }
 
@@ -326,6 +334,7 @@ impl State {
             self.is_surface_configured = true;
             self.depth_texture =
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+            self.hdr.resize(&self.device, width, height);
         }
     }
 
@@ -408,7 +417,7 @@ impl State {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: self.hdr.view(),
                     resolve_target: None,
                     depth_slice: None,
                     ops: wgpu::Operations {
@@ -447,6 +456,7 @@ impl State {
                 &self.light_bind_group,
             );
         }
+        self.hdr.process(&mut encoder, &view);
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
@@ -455,12 +465,13 @@ impl State {
     }
 }
 
-fn create_render_pipeline(
+pub fn create_render_pipeline(
     device: &wgpu::Device,
     layout: &wgpu::PipelineLayout,
     color_format: wgpu::TextureFormat,
     depth_format: Option<wgpu::TextureFormat>,
     vertex_layouts: &[Option<wgpu::VertexBufferLayout>],
+    topology: wgpu::PrimitiveTopology,
     shader: wgpu::ShaderModuleDescriptor,
 ) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(shader);
@@ -488,7 +499,7 @@ fn create_render_pipeline(
             compilation_options: Default::default(),
         }),
         primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
+            topology,
             strip_index_format: None,
             front_face: wgpu::FrontFace::Ccw,
             cull_mode: Some(wgpu::Face::Back),
