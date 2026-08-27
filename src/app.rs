@@ -108,9 +108,12 @@ impl ApplicationHandler<State> for App {
         } else {
             return;
         };
-        match event {
-            //Returns coordinates and not dx,dy on wsl
-            DeviceEvent::MouseMotion { delta: (x, y) } => {
+        if let DeviceEvent::MouseMotion { delta: (x, y) } = event {
+            if cfg!(target_os = "windows") {
+                if state.mouse_pressed {
+                    state.camera_controller.handle_mouse(x, y);
+                }
+            } else {
                 if let Some((last_x, last_y)) = self.last_mouse_pos {
                     let dx = x - last_x;
                     let dy = y - last_y;
@@ -120,7 +123,6 @@ impl ApplicationHandler<State> for App {
                 }
                 self.last_mouse_pos = Some((x, y));
             }
-            _ => {}
         }
     }
 }
