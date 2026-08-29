@@ -100,7 +100,7 @@ impl State {
             height: size.height,
             present_mode: surface_caps.present_modes[0],
             alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
+            view_formats: vec![surface_format.add_srgb_suffix()],
             desired_maximum_frame_latency: 2,
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
@@ -190,6 +190,53 @@ impl State {
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
+        let hdr = hdr::HdrPipeline::new(&device, &config);
+        let hdr_loader = resources::HdrLoader::new(&device);
+        let sky_bytes = resources::load_binary("pure-sky.hdr").await?;
+        let sky_texture = hdr_loader.from_equirectangular_bytes(
+            &device,
+            &queue,
+            &sky_bytes,
+            1080,
+            Some("Sky Texture"),
+        )?;
+        let environment_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("enviroment_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                        count: None,
+                    },
+                ],
+            });
+        let environment_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("environment_bind_group"),
+            layout: &environment_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(sky_texture.view()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sky_texture.sampler()),
+                },
+            ],
+        });
+
         let light_uniform = light::LightUniform::new([5.0, 2.0, 2.0], [1.0, 1.0, 1.0]);
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Light VB"),
@@ -226,6 +273,7 @@ impl State {
                     Some(&texture_bind_group_layout),
                     Some(&camera_bind_group_layout),
                     Some(&light_bind_group_layout),
+                    Some(&environment_layout),
                 ],
                 immediate_size: 0,
             });
@@ -300,52 +348,6 @@ impl State {
             usage: wgpu::BufferUsages::VERTEX,
         });
 
-        let hdr = hdr::HdrPipeline::new(&device, &config);
-        let hdr_loader = resources::HdrLoader::new(&device);
-        let sky_bytes = resources::load_binary("pure-sky.hdr").await?;
-        let sky_texture = hdr_loader.from_equirectangular_bytes(
-            &device,
-            &queue,
-            &sky_bytes,
-            1080,
-            Some("Sky Texture"),
-        )?;
-        let environment_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("enviroment_layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                            view_dimension: wgpu::TextureViewDimension::Cube,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
-                        count: None,
-                    },
-                ],
-            });
-        let environment_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("environment_bind_group"),
-            layout: &environment_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(sky_texture.view()),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(sky_texture.sampler()),
-                },
-            ],
-        });
         let sky_pipeline = {
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Sky Pipeline Layout"),
@@ -473,9 +475,10 @@ impl State {
             }
         };
 
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let view = output.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(self.config.format.add_srgb_suffix()),
+            ..Default::default()
+        });
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -523,6 +526,7 @@ impl State {
                 0..self.instances.len() as u32,
                 &self.camera_bind_group,
                 &self.light_bind_group,
+                &self.environment_bind_group,
             );
 
             render_pass.set_pipeline(&self.sky_pipeline);

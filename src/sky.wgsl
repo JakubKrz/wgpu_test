@@ -27,7 +27,6 @@ fn vs_main(
         (id >> 1u) & 1u,
     ));
     var out: VertexOutput;
-    // out.clip_position = vec4(uv * vec2(4.0, -4.0) + vec2(-1.0, 1.0), 0.0, 1.0);
     out.clip_position = vec4(uv * 4.0 - 1.0, 1.0, 1.0);
     out.frag_position = vec4(uv * 4.0 - 1.0, 1.0, 1.0);
     return out;

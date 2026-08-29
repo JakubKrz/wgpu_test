@@ -309,8 +309,6 @@ impl HdrLoader {
             dst_size,
             self.texture_format,
             1,
-            // We are going to write to `dst` texture so we
-            // need to use a `STORAGE_BINDING`.
             wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
             wgpu::FilterMode::Nearest,
             label,
@@ -318,11 +316,6 @@ impl HdrLoader {
 
         let dst_view = dst.texture().create_view(&wgpu::TextureViewDescriptor {
             label,
-            // Normally, you'd use `TextureViewDimension::Cube`
-            // for a cube texture, but we can't use that
-            // view dimension with a `STORAGE_BINDING`.
-            // We need to access the cube texture layers
-            // directly.
             dimension: Some(wgpu::TextureViewDimension::D2Array),
             ..Default::default()
         });
@@ -348,7 +341,7 @@ impl HdrLoader {
             timestamp_writes: None,
         });
 
-        let num_workgroups = (dst_size + 15) / 16;
+        let num_workgroups = dst_size.div_ceil(16);
         pass.set_pipeline(&self.equirect_to_cubemap);
         pass.set_bind_group(0, &bind_group, &[]);
         pass.dispatch_workgroups(num_workgroups, num_workgroups, 6);
