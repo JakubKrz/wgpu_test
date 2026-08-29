@@ -1,8 +1,11 @@
 // Vertex shader
 
 struct CameraUniform {
-    view_proj: mat4x4<f32>,
     view_pos: vec4<f32>,
+    view: mat4x4<f32>,
+    view_proj: mat4x4<f32>,
+    inv_proj: mat4x4<f32>,
+    inv_view: mat4x4<f32>,
 }
 @group(1) @binding(0)
 var<uniform> camera: CameraUniform;
@@ -104,6 +107,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let specular_strength = pow(max(dot(half_vector, tangent_normal), 0.0), 16.0);
 
     let light_color = light.color * (ambient_strength + diffuse_strength + specular_strength);
+//let light_color = light.color * diffuse_strength; 
     let result = object_color.xyz * light_color;
     return vec4<f32>(result, object_color.a);
 }
