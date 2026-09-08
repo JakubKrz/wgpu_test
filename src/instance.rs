@@ -1,41 +1,36 @@
 pub struct Instance {
-    position: cgmath::Vector3<f32>,
-    rotation: cgmath::Quaternion<f32>,
-    scale: cgmath::Vector3<f32>,
+    position: glam::Vec3,
+    rotation: glam::Quat,
+    scale: glam::Vec3,
 }
+
 impl Instance {
-    pub fn new(position: cgmath::Vector3<f32>, rotation: cgmath::Quaternion<f32>) -> Self {
+    pub fn new(position: glam::Vec3, rotation: glam::Quat) -> Self {
         Self {
             position,
             rotation,
-            scale: cgmath::vec3(1.0, 1.0, 1.0),
+            scale: glam::Vec3::ONE,
         }
     }
 
-    pub fn with_scale(mut self, scale: cgmath::Vector3<f32>) -> Self {
+    pub fn with_scale(mut self, scale: glam::Vec3) -> Self {
         self.scale = scale;
         self
     }
 
     pub fn to_raw(&self) -> InstanceRaw {
-        let scale_inv = cgmath::Matrix3::new(
+        let scale_inv = glam::Mat3::from_diagonal(glam::Vec3::new(
             1.0 / self.scale.x,
-            0.0,
-            0.0,
-            0.0,
             1.0 / self.scale.y,
-            0.0,
-            0.0,
-            0.0,
             1.0 / self.scale.z,
-        );
+        ));
         InstanceRaw {
-            model: ((cgmath::Matrix4::from_translation(self.position)
-                * cgmath::Matrix4::from(self.rotation))
-                * cgmath::Matrix4::from_nonuniform_scale(self.scale.x, self.scale.y, self.scale.z))
-            .into(),
+            model: (glam::Mat4::from_translation(self.position)
+                * glam::Mat4::from_quat(self.rotation)
+                * glam::Mat4::from_scale(self.scale))
+            .to_cols_array_2d(),
 
-            normal: (cgmath::Matrix3::from(self.rotation) * scale_inv).into(),
+            normal: (glam::Mat3::from_quat(self.rotation) * scale_inv).to_cols_array_2d(), // lub odpowiednik tablicowy zależnie od definicji InstanceRaw
         }
     }
 }

@@ -7,8 +7,8 @@ fn aces_tone_map(hdr: vec3<f32>) -> vec3<f32> {
         0.04823, 0.01566, 0.83777,
     );
     let m2 = mat3x3(
-        1.60475,  -0.10208, -0.00327,
-        -0.53108, 1.10813,  -0.07276,
+        1.60475, -0.10208, -0.00327,
+        -0.53108, 1.10813, -0.07276,
         -0.07367, -0.00605, 1.07602,
     );
     let v = m1 * hdr;
@@ -20,8 +20,7 @@ fn aces_tone_map(hdr: vec3<f32>) -> vec3<f32> {
 struct VertexOutput {
     @location(0) uv: vec2<f32>,
     @builtin(position) clip_position: vec4<f32>,
-}
-;
+};
 
 @vertex
 fn vs_main(

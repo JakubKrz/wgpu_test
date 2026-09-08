@@ -1,4 +1,3 @@
-use cgmath::{InnerSpace, Rotation3, Zero};
 use std::sync::Arc;
 use std::time::Duration;
 use wgpu::util::DeviceExt;
@@ -153,9 +152,18 @@ impl State {
         let obj_model =
             resources::load_model("cube.obj", &device, &queue, &texture_bind_group_layout).await?;
 
-        let camera = camera::Camera::new((0.0, 5.0, 10.0), cgmath::Deg(-90.0), cgmath::Deg(-20.0));
-        let projection =
-            camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
+        let camera = camera::Camera::new(
+            glam::Vec3::new(0.0, 5.0, 10.0),
+            (-90.0_f32).to_radians(),
+            (-20.0_f32).to_radians(),
+        );
+        let projection = camera::Projection::new(
+            config.width,
+            config.height,
+            45.0_f32.to_radians(),
+            0.1,
+            100.0,
+        );
         let camera_controller = camera::CameraController::new(4.0, 1.5);
         let mut camera_uniform = CameraUniform::new();
         camera_uniform.update_view_proj(&camera, &projection);
@@ -323,18 +331,12 @@ impl State {
                     let x = SPACE_BETWEEN * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
                     let z = SPACE_BETWEEN * (z as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
 
-                    let position = cgmath::Vector3 { x, y: 0.0, z };
+                    let position = glam::Vec3::new(x, 0.0, z);
 
-                    let rotation = if position.is_zero() {
-                        cgmath::Quaternion::from_axis_angle(
-                            cgmath::Vector3::unit_z(),
-                            cgmath::Deg(0.0),
-                        )
+                    let rotation = if position == glam::Vec3::ZERO {
+                        glam::Quat::IDENTITY
                     } else {
-                        cgmath::Quaternion::from_axis_angle(
-                            position.normalize(),
-                            cgmath::Deg(300.0),
-                        )
+                        glam::Quat::from_axis_angle(position.normalize(), 300.0_f32.to_radians())
                     };
 
                     Instance::new(position, rotation)
@@ -438,12 +440,14 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
-        self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
-            (0.0, 1.0, 0.0).into(),
-            cgmath::Deg(60.0 * dt.as_secs_f32()),
-        ) * old_position)
-            .into();
+        let old_position = glam::Vec3::from_array(self.light_uniform.position);
+
+        let rotation =
+            glam::Quat::from_axis_angle(glam::Vec3::Y, (60.0 * dt.as_secs_f32()).to_radians());
+
+        let new_position = rotation * old_position;
+
+        self.light_uniform.position = new_position.to_array();
         self.queue.write_buffer(
             &self.light_buffer,
             0,

@@ -14,8 +14,8 @@ log = "0.4.34"
 pollster = "1.0.1"
 wgpu = "30.0.0"
 winit = "0.30.13"
-cgmath = "0.18.0"
 tobj = { version = "4.0.5", default-features = false, features = ["async"] }
+glam = { version = "0.33.7", features = ["bytemuck"] }
 
 [build-dependencies]
 anyhow = "1.0"

@@ -1,5 +1,4 @@
 const PI: f32 = 3.1415926535897932384626433832795;
-
 struct Face {
     forward: vec3<f32>,
     up: vec3<f32>,

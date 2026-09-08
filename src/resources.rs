@@ -125,13 +125,13 @@ pub async fn load_model(
                 let v1 = vertices[c[1] as usize];
                 let v2 = vertices[c[2] as usize];
 
-                let pos0: cgmath::Vector3<_> = v0.position.into();
-                let pos1: cgmath::Vector3<_> = v1.position.into();
-                let pos2: cgmath::Vector3<_> = v2.position.into();
+                let pos0: glam::Vec3 = v0.position.into();
+                let pos1: glam::Vec3 = v1.position.into();
+                let pos2: glam::Vec3 = v2.position.into();
 
-                let uv0: cgmath::Vector2<_> = v0.tex_coords.into();
-                let uv1: cgmath::Vector2<_> = v1.tex_coords.into();
-                let uv2: cgmath::Vector2<_> = v2.tex_coords.into();
+                let uv0: glam::Vec2 = v0.tex_coords.into();
+                let uv1: glam::Vec2 = v1.tex_coords.into();
+                let uv2: glam::Vec2 = v2.tex_coords.into();
 
                 let delta_pos1 = pos1 - pos0;
                 let delta_pos2 = pos2 - pos0;
@@ -143,18 +143,25 @@ pub async fn load_model(
                 let tangent = (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
                 let bitangent = (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * -r;
 
-                vertices[c[0] as usize].tangent =
-                    (tangent + cgmath::Vector3::from(vertices[c[0] as usize].tangent)).into();
-                vertices[c[1] as usize].tangent =
-                    (tangent + cgmath::Vector3::from(vertices[c[1] as usize].tangent)).into();
-                vertices[c[2] as usize].tangent =
-                    (tangent + cgmath::Vector3::from(vertices[c[2] as usize].tangent)).into();
-                vertices[c[0] as usize].bitangent =
-                    (bitangent + cgmath::Vector3::from(vertices[c[0] as usize].bitangent)).into();
-                vertices[c[1] as usize].bitangent =
-                    (bitangent + cgmath::Vector3::from(vertices[c[1] as usize].bitangent)).into();
-                vertices[c[2] as usize].bitangent =
-                    (bitangent + cgmath::Vector3::from(vertices[c[2] as usize].bitangent)).into();
+                let i0 = c[0] as usize;
+                let i1 = c[1] as usize;
+                let i2 = c[2] as usize;
+
+                let t0 = glam::Vec3::from_array(vertices[i0].tangent);
+                let t1 = glam::Vec3::from_array(vertices[i1].tangent);
+                let t2 = glam::Vec3::from_array(vertices[i2].tangent);
+
+                let b0 = glam::Vec3::from_array(vertices[i0].bitangent);
+                let b1 = glam::Vec3::from_array(vertices[i1].bitangent);
+                let b2 = glam::Vec3::from_array(vertices[i2].bitangent);
+
+                vertices[i0].tangent = (tangent + t0).to_array();
+                vertices[i1].tangent = (tangent + t1).to_array();
+                vertices[i2].tangent = (tangent + t2).to_array();
+
+                vertices[i0].bitangent = (bitangent + b0).to_array();
+                vertices[i1].bitangent = (bitangent + b1).to_array();
+                vertices[i2].bitangent = (bitangent + b2).to_array();
 
                 triangles_included[c[0] as usize] += 1;
                 triangles_included[c[1] as usize] += 1;
@@ -164,8 +171,10 @@ pub async fn load_model(
             for (i, n) in triangles_included.into_iter().enumerate() {
                 let denom = 1.0 / n as f32;
                 let v = &mut vertices[i];
-                v.tangent = (cgmath::Vector3::from(v.tangent) * denom).into();
-                v.bitangent = (cgmath::Vector3::from(v.bitangent) * denom).into();
+                let tangent = glam::Vec3::from_array(v.tangent);
+                let bitangent = glam::Vec3::from_array(v.bitangent);
+                v.tangent = (tangent * denom).to_array();
+                v.bitangent = (bitangent * denom).to_array();
             }
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("{:?} Vertex Buffer", file_name)),

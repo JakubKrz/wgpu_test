@@ -127,5 +127,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let light_color = light.color * (ambient_strength + diffuse_strength + specular_strength) + reflection * shininess;
     let result = object_color.xyz * light_color;
+
     return vec4<f32>(result, object_color.a);
 }
