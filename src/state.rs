@@ -415,6 +415,7 @@ impl State {
         if !self.camera_controller.handle_key(key, pressed) {
             match (key, pressed) {
                 (KeyCode::Escape, true) => event_loop.exit(),
+                (KeyCode::KeyR, true) => self.reload_shader(),
                 _ => {}
             }
         }
@@ -544,6 +545,10 @@ impl State {
         self.queue.present(output);
 
         Ok(())
+    }
+
+    pub fn reload_shader(&mut self) {
+        self.hdr = hdr::HdrPipeline::new(&self.device, &self.config);
     }
 }
 

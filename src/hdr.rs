@@ -65,7 +65,8 @@ impl HdrPipeline {
             ],
         });
 
-        let shader = wgpu::include_wgsl!("hdr.wgsl");
+        //let shader = wgpu::include_wgsl!("hdr.wgsl");
+        let shader_source = std::fs::read_to_string("src/hdr.wgsl").expect("Can't load hdr shader");
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[Some(&layout)],
@@ -79,7 +80,10 @@ impl HdrPipeline {
             None,
             &[],
             wgpu::PrimitiveTopology::TriangleList,
-            shader,
+            wgpu::ShaderModuleDescriptor {
+                label: Some("Raymarching Shader"),
+                source: wgpu::ShaderSource::Wgsl(shader_source.into()),
+            },
         );
 
         Self {
