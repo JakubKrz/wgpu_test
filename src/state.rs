@@ -33,6 +33,9 @@ pub struct State {
     egui_renderer: egui_wgpu::Renderer,
     light_color: [f32; 3],
     // -------------------------------------
+    //
+    raymarching_pipeline: wgpu::RenderPipeline,
+
     render_pipeline: wgpu::RenderPipeline,
     clear_color: wgpu::Color,
     depth_texture: texture::Texture,
@@ -279,6 +282,29 @@ impl State {
             label: None,
         });
 
+        let raymarching_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Raymarching pipeline layout"),
+                bind_group_layouts: &[], //TODO tutaj jak bede dodawac uniformy to trzbea dac
+                immediate_size: 0,
+            });
+        let raymarching_pipeline = {
+            let shader = std::fs::read_to_string("src/raymarching.wgsl")
+                .expect("Can't load raymarching shader");
+            create_render_pipeline(
+                &device,
+                &raymarching_pipeline_layout,
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+                None,
+                &[],
+                wgpu::PrimitiveTopology::TriangleList,
+                wgpu::ShaderModuleDescriptor {
+                    label: Some("Raymarching Shader"),
+                    source: wgpu::ShaderSource::Wgsl(shader.into()),
+                },
+            )
+        };
+
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -422,6 +448,7 @@ impl State {
             egui_state,
             egui_renderer,
             light_color: [0.0, 0.0, 1.0],
+            raymarching_pipeline,
         })
     }
 
@@ -446,6 +473,31 @@ impl State {
                 _ => {}
             }
         }
+    }
+    pub fn reload_shader(&mut self) {
+        let raymarching_pipeline_layout =
+            self.device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Raymarching pipeline layout"),
+                    bind_group_layouts: &[], //TODO tutaj jak bede dodawac uniformy to trzbea dac
+                    immediate_size: 0,
+                });
+        self.raymarching_pipeline = {
+            let shader = std::fs::read_to_string("src/raymarching.wgsl")
+                .expect("Can't load raymarching shader");
+            create_render_pipeline(
+                &self.device,
+                &raymarching_pipeline_layout,
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+                None,
+                &[],
+                wgpu::PrimitiveTopology::TriangleList,
+                wgpu::ShaderModuleDescriptor {
+                    label: Some("Raymarching Shader"),
+                    source: wgpu::ShaderSource::Wgsl(shader.into()),
+                },
+            )
+        };
     }
     pub fn handle_mouse_button(&mut self, button: MouseButton, pressed: bool) {
         match button {
@@ -589,7 +641,27 @@ impl State {
             render_pass.set_bind_group(1, &self.environment_bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }
-        self.hdr.process(&mut encoder, &view);
+        //self.hdr.process(&mut encoder, &view);
+
+        {
+            let mut raymarching_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Hdr::process"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                ..Default::default()
+            });
+            raymarching_pass.set_pipeline(&self.raymarching_pipeline);
+            //raymarching_pass.set_bind_group(0, &self.bind_group, &[]);
+            raymarching_pass.draw(0..3, 0..1);
+        }
         let tris = self
             .egui_context
             .tessellate(full_output.shapes, full_output.pixels_per_point);
@@ -643,10 +715,6 @@ impl State {
         self.queue.present(output);
 
         Ok(())
-    }
-
-    pub fn reload_shader(&mut self) {
-        self.hdr = hdr::HdrPipeline::new(&self.device, &self.config);
     }
 }
 
