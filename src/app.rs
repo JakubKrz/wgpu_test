@@ -57,7 +57,14 @@ impl ApplicationHandler<State> for App {
             Some(canvas) => canvas,
             None => return,
         };
+        let egui_response = state.egui_state.on_window_event(&state.window, &event);
 
+        if egui_response.consumed {
+            if egui_response.repaint {
+                state.window.request_redraw();
+            }
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => state.resize(size.width, size.height),

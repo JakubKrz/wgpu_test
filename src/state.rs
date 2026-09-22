@@ -20,14 +20,19 @@ use crate::{
 const NUM_INSTANCES_PER_ROW: u32 = 5;
 
 pub struct State {
-    window: Arc<Window>,
+    pub window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
 
     device: wgpu::Device,
     queue: wgpu::Queue,
-
+    //EGUI stuff -TODO  maybe move to new struct
+    egui_context: egui::Context,
+    pub egui_state: egui_winit::State,
+    egui_renderer: egui_wgpu::Renderer,
+    light_color: [f32; 3],
+    // -------------------------------------
     render_pipeline: wgpu::RenderPipeline,
     clear_color: wgpu::Color,
     depth_texture: texture::Texture,
@@ -367,6 +372,24 @@ impl State {
                 shader,
             )
         };
+        let egui_context = egui::Context::default();
+        egui_context.set_visuals(egui::Visuals::dark());
+
+        let viewport_id = egui_context.viewport_id();
+        let egui_state = egui_winit::State::new(
+            egui_context.clone(),
+            viewport_id,
+            &window,
+            Some(window.scale_factor() as f32),
+            None,
+            None,
+        );
+
+        let egui_renderer = egui_wgpu::Renderer::new(
+            &device,
+            config.format,
+            egui_wgpu::RendererOptions::default(),
+        );
 
         Ok(Self {
             surface,
@@ -395,6 +418,10 @@ impl State {
             hdr,
             environment_bind_group,
             sky_pipeline,
+            egui_context,
+            egui_state,
+            egui_renderer,
+            light_color: [0.0, 0.0, 1.0],
         })
     }
 
@@ -490,6 +517,29 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
+        //Egui
+        let raw_input = self.egui_state.take_egui_input(&self.window);
+        let mut full_output = self.egui_context.run_ui(raw_input, |ctx| {
+            egui::Window::new("Shader controls").show(ctx, |ui| {
+                ui.label("Light color");
+                ui.color_edit_button_rgb(&mut self.light_color);
+
+                ui.add(egui::Slider::new(&mut self.clear_color.r, 0.0..=1.0).text("clear r"));
+                ui.add(egui::Slider::new(&mut self.clear_color.g, 0.0..=1.0).text("clear g"));
+                ui.add(egui::Slider::new(&mut self.clear_color.b, 0.0..=1.0).text("clear b"));
+            });
+        });
+
+        self.egui_state
+            .handle_platform_output(&self.window, full_output.platform_output.clone());
+
+        self.light_uniform.color = self.light_color;
+        self.queue.write_buffer(
+            &self.light_buffer,
+            0,
+            bytemuck::cast_slice(&[self.light_uniform]),
+        );
+        //----------------------
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -540,6 +590,54 @@ impl State {
             render_pass.draw(0..3, 0..1);
         }
         self.hdr.process(&mut encoder, &view);
+        let tris = self
+            .egui_context
+            .tessellate(full_output.shapes, full_output.pixels_per_point);
+
+        for (id, image_delta) in &full_output.textures_delta.set {
+            self.egui_renderer
+                .update_texture(&self.device, &self.queue, *id, &image_delta[0]);
+        }
+
+        let screen_descriptor = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: [self.config.width, self.config.height],
+            pixels_per_point: full_output.pixels_per_point,
+        };
+
+        self.egui_renderer.update_buffers(
+            &self.device,
+            &self.queue,
+            &mut encoder,
+            &tris,
+            &screen_descriptor,
+        );
+
+        {
+            let mut egui_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("egui pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load, // NIE czyścimy, malujemy na wierzchu sceny
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+
+            self.egui_renderer
+                .render(&mut egui_pass.forget_lifetime(), &tris, &screen_descriptor);
+        }
+
+        for id in &full_output.textures_delta.free {
+            self.egui_renderer.free_texture(id);
+        }
+        full_output.textures_delta.clear();
 
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(output);
