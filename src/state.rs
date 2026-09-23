@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
-use wgpu::util::DeviceExt;
+use wgpu::{naga, util::DeviceExt};
 use winit::{
     event::{MouseButton, MouseScrollDelta},
     event_loop::ActiveEventLoop,
@@ -474,30 +474,36 @@ impl State {
             }
         }
     }
+
     pub fn reload_shader(&mut self) {
         let raymarching_pipeline_layout =
             self.device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Raymarching pipeline layout"),
-                    bind_group_layouts: &[], //TODO tutaj jak bede dodawac uniformy to trzbea dac
+                    bind_group_layouts: &[],
                     immediate_size: 0,
                 });
-        self.raymarching_pipeline = {
-            let shader = std::fs::read_to_string("src/raymarching.wgsl")
-                .expect("Can't load raymarching shader");
-            create_render_pipeline(
-                &self.device,
-                &raymarching_pipeline_layout,
-                wgpu::TextureFormat::Bgra8UnormSrgb,
-                None,
-                &[],
-                wgpu::PrimitiveTopology::TriangleList,
-                wgpu::ShaderModuleDescriptor {
-                    label: Some("Raymarching Shader"),
-                    source: wgpu::ShaderSource::Wgsl(shader.into()),
-                },
-            )
-        };
+
+        let shader =
+            std::fs::read_to_string("src/raymarching.wgsl").expect("Can't load raymarching shader");
+        if let Err(e) = validate_wgsl(&shader) {
+            eprintln!("{e}");
+        } else {
+            self.raymarching_pipeline = {
+                create_render_pipeline(
+                    &self.device,
+                    &raymarching_pipeline_layout,
+                    wgpu::TextureFormat::Bgra8UnormSrgb,
+                    None,
+                    &[],
+                    wgpu::PrimitiveTopology::TriangleList,
+                    wgpu::ShaderModuleDescriptor {
+                        label: Some("Raymarching Shader"),
+                        source: wgpu::ShaderSource::Wgsl(shader.into()),
+                    },
+                )
+            };
+        }
     }
     pub fn handle_mouse_button(&mut self, button: MouseButton, pressed: bool) {
         match button {
@@ -778,4 +784,17 @@ pub fn create_render_pipeline(
         multiview_mask: None,
         cache: None,
     })
+}
+
+fn validate_wgsl(src: &str) -> Result<(), String> {
+    let module = naga::front::wgsl::parse_str(src).map_err(|e| format!("Parse error: {e}"))?;
+
+    let mut validator = naga::valid::Validator::new(
+        naga::valid::ValidationFlags::all(),
+        naga::valid::Capabilities::all(),
+    );
+    validator
+        .validate(&module)
+        .map_err(|e| format!("Validation error: {e}"))?;
+    Ok(())
 }
