@@ -6,6 +6,7 @@ mod hdr;
 mod instance;
 mod light;
 mod model;
+mod raymarching_uniform;
 mod resources;
 pub mod state;
 mod texture;

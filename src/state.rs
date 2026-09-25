@@ -14,10 +14,12 @@ use crate::{
     instance::{Instance, InstanceRaw},
     light,
     model::{self, DrawModel, Vertex},
+    raymarching_uniform::RaymarchUniform,
     resources, texture,
 };
 
 const NUM_INSTANCES_PER_ROW: u32 = 5;
+const FOV: f32 = 60.0;
 
 pub struct State {
     pub window: Arc<Window>,
@@ -35,6 +37,10 @@ pub struct State {
     // -------------------------------------
     //
     raymarching_pipeline: wgpu::RenderPipeline,
+    raymarch_uniform: RaymarchUniform,
+    raymarch_buffer: wgpu::Buffer,
+    raymarch_bind_group: wgpu::BindGroup,
+    raymarch_bind_group_layout: wgpu::BindGroupLayout,
 
     render_pipeline: wgpu::RenderPipeline,
     clear_color: wgpu::Color,
@@ -282,29 +288,6 @@ impl State {
             label: None,
         });
 
-        let raymarching_pipeline_layout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Raymarching pipeline layout"),
-                bind_group_layouts: &[], //TODO tutaj jak bede dodawac uniformy to trzbea dac
-                immediate_size: 0,
-            });
-        let raymarching_pipeline = {
-            let shader = std::fs::read_to_string("src/raymarching.wgsl")
-                .expect("Can't load raymarching shader");
-            create_render_pipeline(
-                &device,
-                &raymarching_pipeline_layout,
-                wgpu::TextureFormat::Bgra8UnormSrgb,
-                None,
-                &[],
-                wgpu::PrimitiveTopology::TriangleList,
-                wgpu::ShaderModuleDescriptor {
-                    label: Some("Raymarching Shader"),
-                    source: wgpu::ShaderSource::Wgsl(shader.into()),
-                },
-            )
-        };
-
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -417,6 +400,68 @@ impl State {
             egui_wgpu::RendererOptions::default(),
         );
 
+        let aspect_ratio = config.width as f32 / config.height as f32;
+        let fov_scale = (FOV.to_radians() * 0.5).tan();
+
+        let raymarch_uniform = RaymarchUniform {
+            aspect_ratio,
+            fov_scale,
+            _padding: [0.0; 2],
+        };
+
+        let raymarch_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Raymarch Uniform Buffer"),
+            contents: bytemuck::cast_slice(&[raymarch_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let raymarch_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Raymarch Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let raymarch_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Raymarch Bind Group"),
+            layout: &raymarch_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: raymarch_buffer.as_entire_binding(),
+            }],
+        });
+
+        let raymarching_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Raymarching pipeline layout"),
+                bind_group_layouts: &[Some(&raymarch_bind_group_layout)],
+                immediate_size: 0,
+            });
+        let raymarching_pipeline = {
+            let shader = std::fs::read_to_string("src/raymarching.wgsl")
+                .expect("Can't load raymarching shader");
+            create_render_pipeline(
+                &device,
+                &raymarching_pipeline_layout,
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+                None,
+                &[],
+                wgpu::PrimitiveTopology::TriangleList,
+                wgpu::ShaderModuleDescriptor {
+                    label: Some("Raymarching Shader"),
+                    source: wgpu::ShaderSource::Wgsl(shader.into()),
+                },
+            )
+        };
+
         Ok(Self {
             surface,
             device,
@@ -449,6 +494,10 @@ impl State {
             egui_renderer,
             light_color: [0.0, 0.0, 1.0],
             raymarching_pipeline,
+            raymarch_uniform,
+            raymarch_buffer,
+            raymarch_bind_group,
+            raymarch_bind_group_layout,
         })
     }
 
@@ -462,6 +511,12 @@ impl State {
             self.depth_texture =
                 texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
             self.hdr.resize(&self.device, width, height);
+            self.raymarch_uniform.aspect_ratio = width as f32 / height as f32;
+            self.queue.write_buffer(
+                &self.raymarch_buffer,
+                0,
+                bytemuck::cast_slice(&[self.raymarch_uniform]),
+            );
         }
     }
 
@@ -480,7 +535,7 @@ impl State {
             self.device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Raymarching pipeline layout"),
-                    bind_group_layouts: &[],
+                    bind_group_layouts: &[Some(&self.raymarch_bind_group_layout)],
                     immediate_size: 0,
                 });
 
@@ -493,7 +548,7 @@ impl State {
                 create_render_pipeline(
                     &self.device,
                     &raymarching_pipeline_layout,
-                    wgpu::TextureFormat::Bgra8UnormSrgb,
+                    self.config.format,
                     None,
                     &[],
                     wgpu::PrimitiveTopology::TriangleList,
@@ -503,8 +558,10 @@ impl State {
                     },
                 )
             };
+            println!("Shader reloaded");
         }
     }
+
     pub fn handle_mouse_button(&mut self, button: MouseButton, pressed: bool) {
         match button {
             MouseButton::Left => self.mouse_pressed = pressed,
@@ -581,7 +638,6 @@ impl State {
             egui::Window::new("Shader controls").show(ctx, |ui| {
                 ui.label("Light color");
                 ui.color_edit_button_rgb(&mut self.light_color);
-
             });
         });
 
@@ -662,7 +718,7 @@ impl State {
                 ..Default::default()
             });
             raymarching_pass.set_pipeline(&self.raymarching_pipeline);
-            //raymarching_pass.set_bind_group(0, &self.bind_group, &[]);
+            raymarching_pass.set_bind_group(0, &self.raymarch_bind_group, &[]);
             raymarching_pass.draw(0..3, 0..1);
         }
         let tris = self
