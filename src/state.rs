@@ -582,9 +582,6 @@ impl State {
                 ui.label("Light color");
                 ui.color_edit_button_rgb(&mut self.light_color);
 
-                ui.add(egui::Slider::new(&mut self.clear_color.r, 0.0..=1.0).text("clear r"));
-                ui.add(egui::Slider::new(&mut self.clear_color.g, 0.0..=1.0).text("clear g"));
-                ui.add(egui::Slider::new(&mut self.clear_color.b, 0.0..=1.0).text("clear b"));
             });
         });
 
