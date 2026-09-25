@@ -17,7 +17,7 @@ fn vs_main(
     return out;
 }
 fn map(point: vec3<f32>) -> f32 {
-    let ball_pos = vec3<f32>(0.0, 0.0, 4.0);
+    let ball_pos = vec3<f32>(0.0, 0.0, -2.0);
     let r = 0.4;
     let distance = distance(point, ball_pos) - r;
     return distance;
@@ -25,20 +25,24 @@ fn map(point: vec3<f32>) -> f32 {
 @fragment
 fn fs_main(vs: VertexOutput) -> @location(0) vec4<f32> {
     var color = vec4<f32>(0.0, 0.0, 0.0, 1.0);
-    let x = (vs.uv.x - 0.5);
-    let y = (vs.uv.y - 0.5);
+
+    let fov_scale = tan(3.141 * (30.0 / 180.0));//TODO send via uniform
+    let x = (vs.uv.x - 0.5) * fov_scale;
+    let y = (vs.uv.y - 0.5) * fov_scale;
     //TODO 
     //screen resolution - get form cpu
-    let origin = vec3<f32>(x, y, -1.0);
-    let dir = vec3<f32>(0.0, 0.0, 1.0);
-    var cur_point = origin;
+    let origin = vec3(0.0, 0.0, 1.0);
+    let direction = normalize(vec3(x, y, 0) - origin);
+    let near_plane_distance = -1.0;
+    var current_point = origin + direction * near_plane_distance;
+
     for (var i = 0; i < 100; i++) {
-        let dist = map(cur_point);
+        let dist = map(current_point);
         if dist < 0.001 {
             color.g = f32(i) / 100.0;
             break;
         }
-        cur_point += dir * dist;
+        current_point += direction * dist;
     }
     color.b = 0.05;
     color.r = 0.0;
